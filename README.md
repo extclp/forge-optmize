@@ -9,7 +9,7 @@
 ##### 使用方法:
 
 1. 将dummy.jar放入libraries
-2. 运行OptimizeForge.java
+2. 运行OptimizeForge.jar
 
 ##### 注意实现:
 
