@@ -1,6 +1,7 @@
 import javax.swing.*;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.*;
 
 import static javax.swing.JFileChooser.APPROVE_OPTION;
 
@@ -21,30 +22,59 @@ public class OptimizeForge {
 
         Path libraries = folder.resolve("libraries");
 
-        Path coremods = libraries.resolve("net/minecraftforge/coremods");
-        for (Path cFolder : Files.newDirectoryStream(coremods)) {
-            for (Path coreFile : Files.newDirectoryStream(cFolder)) {
-                FileSystem fs = FileSystems.newFileSystem(coreFile);
-                Path service = fs.getPath("META-INF/services/net.minecraftforge.forgespi.coremod.ICoreModProvider");
-                if (Files.exists(service)) {
-                    Files.delete(service);
-                }
-                fs.close();
-            }
-        }
-
         Path forge = libraries.resolve("net/minecraftforge/forge");
         for (Path fFolder : Files.newDirectoryStream(forge)) {
             for (Path forgeFile : Files.newDirectoryStream(fFolder)) {
-                if(forgeFile.endsWith("server.jar")) {
+                String fileName = forgeFile.getFileName().toString();
+
+                // 移除 forge 的 coremods.json
+                if(fileName.endsWith("universal.jar")) {
                     FileSystem fs = FileSystems.newFileSystem(forgeFile);
                     Path coremodsData = fs.getPath("META-INF/coremods.json");
                     if (Files.exists(coremodsData)) {
                         Files.delete(coremodsData);
                     }
                     fs.close();
+                // 移除没用的依赖
+                } else if(fileName.endsWith(".txt")) {
+                    List<String> forgeArgs = Files.readAllLines(forgeFile);
+
+                    String CP_KEY = "-DlegacyClassPath";
+
+                    int cpLine = 0;
+                    Set<String> cp = new LinkedHashSet<>();
+
+                    for (int i = 0; i < forgeArgs.size(); i++) {
+                        String line = forgeArgs.get(i);
+                        if(line.startsWith(CP_KEY)) {
+                            cpLine = i;
+                            String[] cpArray = line.split("=")[1].split(";");
+                            cp.addAll(List.of(cpArray));
+                        }
+                    }
+
+                    removeCP(cp, "coremods");
+                    removeCP(cp, "nashorn-core");
+
+                    cp.add("libraries/dummy.jar");
+
+                    forgeArgs.set(cpLine, CP_KEY + "=" + String.join(";", cp));
+
+                    Files.writeString(forgeFile, String.join("\n", forgeArgs));
                 }
             }
         }
+    }
+
+    static void removeCP(Collection<String> list, String target) {
+        list.removeIf(cp -> {
+            String[] split = cp.split("/");
+            // fix libraries/dummy.jar
+            if(split.length < 3) {
+                return false;
+            }
+            // -1 file |  -2 version | -3 name
+            return  split[split.length - 3].equals(target);
+        });
     }
 }
